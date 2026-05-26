@@ -511,7 +511,13 @@ public class PlayerPacketRewriter1_8 extends RewriterBase<Protocol1_8To1_7_6_10>
                 String username = message.split(" ")[1];
                 final GameProfileStorage storage = wrapper.user().get(GameProfileStorage.class);
 
-                final GameProfileStorage.GameProfile profile = storage.get(username, true);
+                // Multiple players with the same name may exist. This will only represent
+                // fake players so it's fine to just pick the first one.
+                List<GameProfileStorage.GameProfile> profiles = storage.get(username, true);
+                if (profiles.isEmpty()) {
+                    return;
+                }
+                final GameProfileStorage.GameProfile profile = profiles.get(0);
                 if (profile != null && profile.uuid != null) {
                     wrapper.cancel();
 
@@ -529,9 +535,6 @@ public class PlayerPacketRewriter1_8 extends RewriterBase<Protocol1_8To1_7_6_10>
                 map(Types.BYTE, Types.VAR_INT); // Mode
                 handler(wrapper -> {
                     final int mode = wrapper.get(Types.VAR_INT, 1);
-                    if (mode != 0) {
-                        return;
-                    }
                     final EntityTracker1_8 tracker = wrapper.user().getEntityTracker(Protocol1_8To1_7_6_10.class);
                     final int entityId = tracker.getHologramIdWithExtra(wrapper.get(Types.VAR_INT, 0));
                     final PlayerSessionStorage position = wrapper.user().get(PlayerSessionStorage.class);
@@ -541,6 +544,11 @@ public class PlayerPacketRewriter1_8 extends RewriterBase<Protocol1_8To1_7_6_10>
                     }
 
                     wrapper.set(Types.VAR_INT, 0, entityId);
+
+                    if (mode != 0) {
+                        return;
+                    }
+
                     final AABB boundingBox = tracker.getHolograms().get(entityId).getBoundingBox();
 
                     Vector3d pos = new Vector3d(position.getPosX(), position.getPosY() + 1.8, position.getPosZ());
@@ -608,6 +616,16 @@ public class PlayerPacketRewriter1_8 extends RewriterBase<Protocol1_8To1_7_6_10>
             protected void register() {
                 map(Types.VAR_INT); // Status
                 map(RewindTypes.U_BYTE_POSITION, Types.BLOCK_POSITION1_8); // Position
+                handler(wrapper -> {
+                    // 1.7 uses 255 as "no face"
+                    // 1.8 changed this to only be in the range EnumFacing range (0-5) and uses DOWN when no face is used
+                    // This properly rewrites invalid values to the 1.8 equivalent
+                    int face = wrapper.read(Types.UNSIGNED_BYTE);
+                    if (face > 5) {
+                        face = 0;
+                    }
+                    wrapper.write(Types.UNSIGNED_BYTE, (short) face);
+                });
             }
         });
 
