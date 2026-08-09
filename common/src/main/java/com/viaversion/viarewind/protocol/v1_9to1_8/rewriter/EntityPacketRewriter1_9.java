@@ -253,6 +253,23 @@ public class EntityPacketRewriter1_9 extends VREntityRewriter<ClientboundPackets
             }
         });
 
+        protocol.registerClientbound(ClientboundPackets1_9.ANIMATE, new PacketHandlers() {
+            @Override
+            public void register() {
+                map(Types.VAR_INT); // Entity id
+                map(Types.UNSIGNED_BYTE); // Animation
+                handler(wrapper -> {
+                    final short animation = wrapper.get(Types.UNSIGNED_BYTE, 0);
+                    // Action 1 is a hurt duplicate of entity status 2 (only ViaBackwards manufactures it)
+                    // and makes 1.8 clients re-flash mid-window; action 3 is offhand swing on 1.9+ but
+                    // eat food on 1.8. Cancel both, matching ViaVersion's reverse-direction handling.
+                    if (animation == 1 || animation == 3) {
+                        wrapper.cancel();
+                    }
+                });
+            }
+        });
+
         protocol.registerClientbound(ClientboundPackets1_9.MOVE_ENTITY_POS, wrapper -> {
             final int entityId = wrapper.passthrough(Types.VAR_INT);
             final int deltaX = wrapper.read(Types.SHORT);
